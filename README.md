@@ -2,7 +2,7 @@
 
 让小爱智能音箱支持 **AirPlay 投屏** 和 **Web 控制面板**。通过 iPhone/Mac 的 AirPlay 或浏览器直接控制音箱播放。
 
-<img width="375" height="667" alt="IMG_7340" src="https://github.com/user-attachments/assets/c6eca8a5-7368-48ba-9fe2-985a5893642c" />
+<img width="375" height="667" alt="IMG_7340" src="https://github.com/user-attachments/assets/35757dfa-c28d-4d91-95a6-3d334fd60cd2" />
 <img width="375" height="667" alt="IMG_7341" src="https://github.com/user-attachments/assets/47ffa240-7f4a-43ea-80af-20986c02024f" />
 
 
