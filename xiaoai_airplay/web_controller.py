@@ -33,6 +33,8 @@ class WebController:
         app.router.add_get("/api/files", self._handle_api_files)
         app.router.add_post("/api/play", self._handle_api_play)
         app.router.add_post("/api/stop", self._handle_api_stop)
+        app.router.add_post("/api/pause", self._handle_api_pause)
+        app.router.add_post("/api/resume", self._handle_api_resume)
         app.router.add_post("/api/volume", self._handle_api_volume)
         app.router.add_post("/api/tts", self._handle_api_tts)
         app.router.add_post("/api/upload", self._handle_api_upload)
@@ -112,6 +114,30 @@ class WebController:
         """停止播放"""
         result = await self.service._stop_play()
         return web.json_response({"ok": result, "action": "stop"})
+
+    async def _handle_api_pause(self, request: web.Request) -> web.Response:
+        """暂停播放"""
+        if self.service.miservice.connected:
+            result = await self.service.miservice.pause()
+            return web.json_response({"ok": result, "action": "pause"})
+        elif self.service.dlna.connected:
+            result = await self.service.dlna.pause()
+            return web.json_response({"ok": result, "action": "pause"})
+        return web.json_response({"ok": False, "error": "未连接"}, status=503)
+
+    async def _handle_api_resume(self, request: web.Request) -> web.Response:
+        """继续播放（如果 player_play 不支持，回退到重播最近的 URL）"""
+        if self.service.miservice.connected:
+            result = await self.service.miservice.resume()
+            if not result and self.service._last_play_url:
+                # 流播放场景下 player_play 可能不支持，重下 play_url
+                logger.info("resume 失败，重播上次 URL: %s", self.service._last_play_url)
+                result = await self.service._play_url(self.service._last_play_url, title="Resume")
+            return web.json_response({"ok": result, "action": "resume"})
+        elif self.service.dlna.connected:
+            result = await self.service.dlna.play()
+            return web.json_response({"ok": result, "action": "resume"})
+        return web.json_response({"ok": False, "error": "未连接"}, status=503)
 
     async def _handle_api_volume(self, request: web.Request) -> web.Response:
         """设置音量"""

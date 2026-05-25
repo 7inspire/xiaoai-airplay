@@ -38,6 +38,9 @@ class AudioStreamServer:
         self._stream_active = False
         self._stream_clients: list[asyncio.Queue] = []
 
+        # 流客户端全部断开时的回调（用于重连音箱）
+        self.on_all_stream_clients_disconnected = None
+
     @property
     def app(self) -> Optional[web.Application]:
         return self._app
@@ -105,8 +108,21 @@ class AudioStreamServer:
                     "filename": str(rel_path),
                     "size": f.stat().st_size,
                     "mime": MIME_MAP.get(f.suffix.lower(), "audio/mpeg"),
+                    "duration": self._get_audio_duration(f),
                 })
         return files
+
+    @staticmethod
+    def _get_audio_duration(filepath: Path) -> float:
+        """获取音频时长（秒），依赖 mutagen，不可用时返回 0"""
+        try:
+            from mutagen import File as MutagenFile
+            audio = MutagenFile(str(filepath))
+            if audio and audio.info:
+                return round(audio.info.length, 1)
+        except Exception:
+            pass
+        return 0.0
 
     # --- HTTP Handlers ---
 
@@ -228,6 +244,10 @@ class AudioStreamServer:
                     break
         finally:
             self._stream_clients.remove(client_queue)
-            logger.info("流客户端已断开，剩余客户端数: %d", len(self._stream_clients))
+            remaining = len(self._stream_clients)
+            logger.info("流客户端已断开，剩余客户端数: %d", remaining)
+            # 所有客户端都断开时触发回调（如语音唤醒导致音箱中断拉流）
+            if remaining == 0 and self.on_all_stream_clients_disconnected:
+                asyncio.create_task(self.on_all_stream_clients_disconnected())
 
         return response

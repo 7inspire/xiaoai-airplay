@@ -139,6 +139,20 @@
   /* Empty */
   .empty { text-align: center; padding: 24px; color: var(--text2); font-size: 14px; }
 
+  /* Progress bar */
+  .progress-row {
+    display: flex; align-items: center; gap: 8px; padding: 0 0 10px;
+  }
+  .prog-time { font-size: 12px; color: var(--text2); min-width: 36px; text-align: center; }
+  .prog-track {
+    flex: 1; height: 4px; background: var(--border); border-radius: 2px;
+    cursor: pointer; position: relative; overflow: hidden;
+  }
+  .prog-fill {
+    height: 100%; background: var(--accent); border-radius: 2px;
+    width: 0%; transition: width 0.9s linear;
+  }
+
   /* Scrollbar */
   ::-webkit-scrollbar { width: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -169,9 +183,16 @@
 
   <!-- Controls -->
   <div class="card">
+    <div class="progress-row">
+      <span class="prog-time" id="progCurrent">0:00</span>
+      <div class="prog-track"><div class="prog-fill" id="progFill"></div></div>
+      <span class="prog-time" id="progTotal">--:--</span>
+    </div>
     <div class="controls">
+      <button class="ctrl-btn" onclick="prevTrack()" title="上一曲">⏮</button>
       <button class="ctrl-btn" onclick="apiStop()" title="停止">⏹</button>
-      <button class="ctrl-btn play" onclick="apiPlayCurrent()" title="播放" id="playBtn">▶</button>
+      <button class="ctrl-btn play" onclick="togglePlayPause()" title="播放/暂停" id="playBtn">▶</button>
+      <button class="ctrl-btn" onclick="nextTrack()" title="下一曲">⏭</button>
     </div>
     <div class="volume-row">
       <span>🔉</span>
@@ -215,8 +236,16 @@
 <div class="toast" id="toast"></div>
 
 <script>
+// --- State ---
 let currentFile = null;
 let statusData = {};
+let isPlaying = false;
+let filesList = [];
+let currentIndex = -1;
+let playStartTime = 0;
+let currentDuration = 0;
+let lastCmdTime = 0;
+const CMD_GRACE_MS = 5000; // 指令发出后 5s 内不用状态轮询覆盖本地状态
 
 // --- Toast ---
 function toast(msg) {
@@ -226,7 +255,7 @@ function toast(msg) {
   setTimeout(() => el.classList.remove('show'), 2500);
 }
 
-// --- API calls ---
+// --- API helper ---
 async function api(path, opts = {}) {
   try {
     const r = await fetch(path, opts);
@@ -237,6 +266,24 @@ async function api(path, opts = {}) {
   }
 }
 
+// --- Time format ---
+function fmtTime(s) {
+  s = Math.floor(Math.max(0, s));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+// --- Progress update (每秒) ---
+function updateProgress() {
+  if (!isPlaying || !playStartTime) return;
+  const elapsed = (Date.now() - playStartTime) / 1000;
+  document.getElementById('progCurrent').textContent = fmtTime(elapsed);
+  if (currentDuration > 0) {
+    document.getElementById('progFill').style.width = Math.min(elapsed / currentDuration * 100, 100) + '%';
+    if (elapsed >= currentDuration + 2) nextTrack();
+  }
+}
+
+// --- Status poll ---
 async function loadStatus() {
   statusData = await api('/api/status');
   const dot = document.getElementById('statusDot');
@@ -249,33 +296,47 @@ async function loadStatus() {
     dot.className = 'dot off';
     txt.textContent = '未连接';
   }
-  // Volume
+  // 音量始终同步
   if (statusData.player && statusData.player.volume !== undefined) {
     document.getElementById('volumeSlider').value = statusData.player.volume;
     document.getElementById('volVal').textContent = statusData.player.volume;
   }
-  // Playing status
-  if (statusData.player && statusData.player.status === 1) {
-    document.getElementById('npIcon').textContent = '🎶';
-    document.getElementById('npSub').textContent = '正在播放中';
+  // 指令发出后 5s 内不覆盖本地状态（避免 race condition）
+  if (Date.now() - lastCmdTime > CMD_GRACE_MS) {
+    const ps = statusData.player && statusData.player.status;
+    if (ps === 1) {
+      if (!isPlaying) { isPlaying = true; playStartTime = Date.now(); }
+      document.getElementById('playBtn').textContent = '⏸';
+      document.getElementById('npIcon').textContent = '🎶';
+    } else if (ps === 2) {
+      isPlaying = false;
+      document.getElementById('playBtn').textContent = '▶';
+      document.getElementById('npSub').textContent = '已暂停';
+    } else if (ps === 0) {
+      if (isPlaying) { isPlaying = false; playStartTime = 0; }
+      document.getElementById('playBtn').textContent = '▶';
+    }
   }
 }
 
+// --- File list ---
 async function loadFiles() {
   const files = await api('/api/files');
+  filesList = Array.isArray(files) ? files : [];
   const list = document.getElementById('fileList');
-  if (!files.length) {
+  if (!filesList.length) {
     list.innerHTML = '<div class="empty">暂无音乐文件，请上传</div>';
     return;
   }
-  list.innerHTML = files.map(f => {
+  list.innerHTML = filesList.map((f, idx) => {
     const sizeMB = (f.size / 1024 / 1024).toFixed(1);
+    const dur = f.duration ? ' · ' + fmtTime(f.duration) : '';
     return `
-      <div class="file-item" data-filename="${encodeURIComponent(f.filename)}" onclick="selectFile(this, '${escHtml(f.filename)}')">
+      <div class="file-item" data-idx="${idx}" onclick="selectAndPlay(${idx})">
         <span class="fi-icon">🎵</span>
         <div class="fi-info">
           <div class="fi-name">${escHtml(f.name)}</div>
-          <div class="fi-size">${sizeMB} MB</div>
+          <div class="fi-size">${sizeMB} MB${dur}</div>
         </div>
         <button class="fi-del" onclick="event.stopPropagation();apiDelete('${escHtml(f.filename)}')" title="删除">🗑</button>
       </div>`;
@@ -286,19 +347,33 @@ function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-function selectFile(el, filename) {
-  document.querySelectorAll('.file-item').forEach(e => e.classList.remove('active'));
-  el.classList.add('active');
-  currentFile = filename;
-  document.getElementById('npTitle').textContent = filename;
-  document.getElementById('npSub').textContent = '点击播放按钮开始';
-  // 双击直接播放
-  apiPlay(filename);
+function selectAndPlay(idx) {
+  if (idx < 0 || idx >= filesList.length) return;
+  currentIndex = idx;
+  const f = filesList[idx];
+  currentFile = f.filename;
+  currentDuration = f.duration || 0;
+  document.querySelectorAll('.file-item').forEach((el, i) => el.classList.toggle('active', i === idx));
+  document.getElementById('npTitle').textContent = f.name;
+  document.getElementById('progTotal').textContent = currentDuration ? fmtTime(currentDuration) : '--:--';
+  apiPlay(f.filename);
 }
 
+function prevTrack() {
+  if (!filesList.length) return;
+  selectAndPlay(currentIndex <= 0 ? filesList.length - 1 : currentIndex - 1);
+}
+
+function nextTrack() {
+  if (!filesList.length) return;
+  selectAndPlay(currentIndex < 0 ? 0 : (currentIndex + 1) % filesList.length);
+}
+
+// --- Playback ---
 async function apiPlay(filename) {
-  toast('播放: ' + filename);
-  document.getElementById('npTitle').textContent = filename;
+  lastCmdTime = Date.now();
+  const displayName = filename.replace(/.*\//, '').replace(/\.[^.]+$/, '');
+  document.getElementById('npTitle').textContent = displayName;
   document.getElementById('npSub').textContent = '正在播放';
   document.getElementById('npIcon').textContent = '🎶';
   const r = await api('/api/play', {
@@ -306,23 +381,73 @@ async function apiPlay(filename) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ filename })
   });
-  if (!r.ok) toast('播放失败');
+  if (!r.ok) {
+    toast('播放失败');
+  } else {
+    isPlaying = true;
+    playStartTime = Date.now();
+    document.getElementById('playBtn').textContent = '⏸';
+    document.getElementById('progFill').style.width = '0%';
+    document.getElementById('progCurrent').textContent = '0:00';
+  }
 }
 
-async function apiPlayCurrent() {
-  if (currentFile) {
-    apiPlay(currentFile);
+async function togglePlayPause() {
+  if (isPlaying) {
+    await apiPause();
+  } else if (statusData.player && statusData.player.status === 2) {
+    await apiResume();
+  } else if (currentIndex >= 0) {
+    selectAndPlay(currentIndex);
+  } else if (filesList.length > 0) {
+    selectAndPlay(0);
   } else {
-    toast('请先选择一首歌');
+    toast('请先上传或选择音乐文件');
+  }
+}
+
+async function apiPause() {
+  lastCmdTime = Date.now();
+  const r = await api('/api/pause', { method: 'POST' });
+  if (r.ok) {
+    isPlaying = false;
+    toast('⏸ 已暂停');
+    document.getElementById('playBtn').textContent = '▶';
+    document.getElementById('npSub').textContent = '已暂停';
+  } else {
+    toast('暂停失败: ' + (r.error || '音箱不支持'));
+    loadStatus();
+  }
+}
+
+async function apiResume() {
+  lastCmdTime = Date.now();
+  const r = await api('/api/resume', { method: 'POST' });
+  if (r.ok) {
+    isPlaying = true;
+    playStartTime = Date.now();
+    toast('▶ 继续播放');
+    document.getElementById('playBtn').textContent = '⏸';
+    document.getElementById('npSub').textContent = '正在播放中';
+    document.getElementById('npIcon').textContent = '🎶';
+  } else {
+    toast('恢复失败: ' + (r.error || '音箱不支持'));
+    loadStatus();
   }
 }
 
 async function apiStop() {
+  lastCmdTime = Date.now();
   const r = await api('/api/stop', { method: 'POST' });
   if (r.ok) {
-    toast('已停止');
+    isPlaying = false;
+    playStartTime = 0;
+    toast('⏹ 已停止');
+    document.getElementById('playBtn').textContent = '▶';
     document.getElementById('npIcon').textContent = '🎵';
     document.getElementById('npSub').textContent = '已停止';
+    document.getElementById('progFill').style.width = '0%';
+    document.getElementById('progCurrent').textContent = '0:00';
   }
 }
 
@@ -350,12 +475,8 @@ async function apiTts() {
 async function apiDelete(filename) {
   if (!confirm('确定删除 ' + filename + '？')) return;
   const r = await api('/api/files/' + encodeURIComponent(filename), { method: 'DELETE' });
-  if (r.ok) {
-    toast('已删除');
-    loadFiles();
-  } else {
-    toast('删除失败');
-  }
+  if (r.ok) { toast('已删除'); loadFiles(); }
+  else toast('删除失败');
 }
 
 async function handleUpload(files) {
@@ -364,14 +485,9 @@ async function handleUpload(files) {
     fd.append('file', file);
     toast('上传中: ' + file.name);
     const r = await api('/api/upload', { method: 'POST', body: fd });
-    if (r.ok) {
-      toast('上传完成: ' + file.name);
-    } else {
-      toast('上传失败: ' + (r.error || ''));
-    }
+    toast(r.ok ? '上传完成: ' + file.name : '上传失败: ' + (r.error || ''));
   }
   loadFiles();
-  // Reset input
   document.querySelector('#uploadArea input').value = '';
 }
 
@@ -379,17 +495,13 @@ async function handleUpload(files) {
 const ua = document.getElementById('uploadArea');
 ua.addEventListener('dragover', e => { e.preventDefault(); ua.style.borderColor = 'var(--accent)'; });
 ua.addEventListener('dragleave', () => { ua.style.borderColor = ''; });
-ua.addEventListener('drop', e => {
-  e.preventDefault();
-  ua.style.borderColor = '';
-  handleUpload(e.dataTransfer.files);
-});
+ua.addEventListener('drop', e => { e.preventDefault(); ua.style.borderColor = ''; handleUpload(e.dataTransfer.files); });
 
 // Init
 loadStatus();
 loadFiles();
-// 定时刷新状态
 setInterval(loadStatus, 5000);
+setInterval(updateProgress, 1000);
 </script>
 </body>
 </html>

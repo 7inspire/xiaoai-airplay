@@ -5,3 +5,4 @@ python-didl-lite>=1.4.0
 ffmpeg-python>=0.2.0
 pyyaml>=6.0
 miservice_fork>=2.9.0
+mutagen>=1.47.0

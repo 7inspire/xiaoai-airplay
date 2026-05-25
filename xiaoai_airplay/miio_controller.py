@@ -250,25 +250,56 @@ class MiServiceController:
             return False
 
         try:
-            await self._mina_service.player_pause(self._device.did)
+            await self._mina_service.player_stop(self._device.did)
             logger.info("停止播放")
             return True
         except Exception as e:
             logger.error("停止失败: %s", e)
             return False
 
+    async def pause(self) -> bool:
+        """暂停播放"""
+        if not self._connected:
+            return False
+
+        try:
+            result = await self._mina_service.player_pause(self._device.did)
+            logger.info("暂停播放, 响应: %s", result)
+            # 检查 ubus 响应码
+            code = (result or {}).get("data", {}).get("code", 0)
+            if code != 0:
+                logger.warning("player_pause 返回错误码 %d，尝试 player_stop 代替", code)
+                result2 = await self._mina_service.player_stop(self._device.did)
+                code2 = (result2 or {}).get("data", {}).get("code", 0)
+                return code2 == 0
+            return True
+        except Exception as e:
+            logger.error("暂停失败: %s", e)
+            return False
+
+    async def resume(self) -> bool:
+        """继续播放"""
+        if not self._connected:
+            return False
+
+        try:
+            result = await self._mina_service.player_play(self._device.did)
+            logger.info("继续播放, 响应: %s", result)
+            code = (result or {}).get("data", {}).get("code", 0)
+            return code == 0
+        except Exception as e:
+            logger.error("继续播放失败: %s", e)
+            return False
+
     async def set_volume(self, volume: int) -> bool:
         """设置音量 (0-100)"""
-        if not self._connected or not self._miot_did:
+        if not self._connected:
             return False
 
         try:
             volume = max(0, min(100, volume))
-            # Speaker SIID=3, PIID=1 (volume)
-            result = await self._miio_service.miot_set_props([
-                {"did": self._miot_did, "siid": 3, "piid": 1, "value": volume}
-            ])
-            logger.info("音量设置为 %d: %s", volume, result)
+            await self._mina_service.player_set_volume(self._device.did, volume)
+            logger.info("音量设置为 %d", volume)
             return True
         except Exception as e:
             logger.error("设置音量失败: %s", e)
