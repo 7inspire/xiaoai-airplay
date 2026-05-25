@@ -1,0 +1,27 @@
+services:
+  xiaoai-airplay:
+    build: .
+    image: xiaoai-airplay:latest
+    container_name: xiaoai-airplay
+    restart: unless-stopped
+    # macOS Docker Desktop 不支持 host 网络，用端口映射
+    # Linux/NAS 可改为 network_mode: host 并删除 ports
+    ports:
+      - "8080:8080"               # Web 控制面板 + HTTP 音频
+      - "7100:7100"               # AirPlay RTSP
+    volumes:
+      - ./music:/app/music        # 音乐文件目录
+      - ./conf:/app/conf          # 配置文件目录
+    env_file:
+      - .env                      # 从 .env 文件读取环境变量
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=Asia/Shanghai
+      # 宿主机 IP（音箱需要通过此 IP 访问音频流）
+      - HOST_IP=${HOST_IP:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/status')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小爱音箱控制面板</title>
+<style>
+  :root {
+    --bg: #0f0f0f; --card: #1a1a2e; --accent: #e94560;
+    --accent2: #0f3460; --text: #eee; --text2: #999;
+    --border: #2a2a3e; --success: #4ade80; --hover: #16213e;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh;
+  }
+  .container { max-width: 480px; margin: 0 auto; padding: 16px; }
+
+  /* Header */
+  .header {
+    text-align: center; padding: 24px 0 16px;
+  }
+  .header h1 { font-size: 22px; font-weight: 700; }
+  .header .status {
+    margin-top: 8px; font-size: 13px; color: var(--text2);
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot.on { background: var(--success); }
+  .dot.off { background: var(--accent); }
+
+  /* Cards */
+  .card {
+    background: var(--card); border-radius: 12px;
+    padding: 16px; margin-bottom: 12px; border: 1px solid var(--border);
+  }
+  .card-title {
+    font-size: 13px; color: var(--text2); text-transform: uppercase;
+    letter-spacing: 1px; margin-bottom: 12px;
+  }
+
+  /* Now Playing */
+  .now-playing {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .now-playing .icon {
+    width: 48px; height: 48px; background: var(--accent2); border-radius: 10px;
+    display: flex; align-items: center; justify-content: center; font-size: 22px;
+    flex-shrink: 0;
+  }
+  .now-playing .info { flex: 1; min-width: 0; }
+  .now-playing .info .title { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .now-playing .info .sub { font-size: 12px; color: var(--text2); margin-top: 2px; }
+
+  /* Controls */
+  .controls {
+    display: flex; align-items: center; justify-content: center; gap: 16px;
+    padding: 8px 0;
+  }
+  .ctrl-btn {
+    width: 48px; height: 48px; border-radius: 50%; border: none;
+    background: var(--accent2); color: var(--text); font-size: 20px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: all .15s;
+  }
+  .ctrl-btn:hover { background: var(--accent); transform: scale(1.1); }
+  .ctrl-btn.play { width: 56px; height: 56px; background: var(--accent); font-size: 24px; }
+
+  /* Volume */
+  .volume-row {
+    display: flex; align-items: center; gap: 10px; padding: 4px 0;
+  }
+  .volume-row span { font-size: 18px; width: 28px; text-align: center; }
+  .volume-row input[type="range"] {
+    flex: 1; -webkit-appearance: none; appearance: none; height: 4px;
+    background: var(--border); border-radius: 2px; outline: none;
+  }
+  .volume-row input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 16px; height: 16px;
+    background: var(--accent); border-radius: 50%; cursor: pointer;
+  }
+  .volume-val { font-size: 13px; color: var(--text2); width: 32px; text-align: right; }
+
+  /* File list */
+  .file-list { max-height: 320px; overflow-y: auto; }
+  .file-item {
+    display: flex; align-items: center; padding: 10px 8px;
+    border-radius: 8px; cursor: pointer; transition: background .15s;
+    gap: 10px;
+  }
+  .file-item:hover { background: var(--hover); }
+  .file-item.active { background: var(--accent2); }
+  .file-item .fi-icon { font-size: 18px; flex-shrink: 0; }
+  .file-item .fi-info { flex: 1; min-width: 0; }
+  .file-item .fi-name { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-item .fi-size { font-size: 11px; color: var(--text2); }
+  .file-item .fi-del {
+    width: 28px; height: 28px; border-radius: 6px; border: none;
+    background: transparent; color: var(--text2); font-size: 14px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .file-item .fi-del:hover { background: #4a1525; color: var(--accent); }
+
+  /* Upload */
+  .upload-area {
+    border: 2px dashed var(--border); border-radius: 10px;
+    padding: 20px; text-align: center; cursor: pointer;
+    transition: border-color .2s; position: relative;
+  }
+  .upload-area:hover { border-color: var(--accent); }
+  .upload-area input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .upload-area .icon { font-size: 28px; margin-bottom: 4px; }
+  .upload-area .text { font-size: 13px; color: var(--text2); }
+
+  /* TTS */
+  .tts-row { display: flex; gap: 8px; }
+  .tts-row input {
+    flex: 1; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-size: 14px; outline: none;
+  }
+  .tts-row input:focus { border-color: var(--accent); }
+  .tts-row button {
+    padding: 10px 16px; background: var(--accent); border: none;
+    border-radius: 8px; color: #fff; font-size: 14px; cursor: pointer;
+    white-space: nowrap;
+  }
+  .tts-row button:hover { opacity: .85; }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--card); border: 1px solid var(--border);
+    padding: 10px 20px; border-radius: 8px; font-size: 13px;
+    opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 100;
+  }
+  .toast.show { opacity: 1; }
+
+  /* Empty */
+  .empty { text-align: center; padding: 24px; color: var(--text2); font-size: 14px; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <!-- Header -->
+  <div class="header">
+    <h1>🔊 小爱音箱</h1>
+    <div class="status">
+      <span class="dot" id="statusDot"></span>
+      <span id="statusText">连接中...</span>
+    </div>
+  </div>
+
+  <!-- Now Playing -->
+  <div class="card">
+    <div class="now-playing">
+      <div class="icon" id="npIcon">🎵</div>
+      <div class="info">
+        <div class="title" id="npTitle">未在播放</div>
+        <div class="sub" id="npSub">选择歌曲开始播放</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="card">
+    <div class="controls">
+      <button class="ctrl-btn" onclick="apiStop()" title="停止">⏹</button>
+      <button class="ctrl-btn play" onclick="apiPlayCurrent()" title="播放" id="playBtn">▶</button>
+    </div>
+    <div class="volume-row">
+      <span>🔉</span>
+      <input type="range" id="volumeSlider" min="0" max="100" value="48"
+             oninput="document.getElementById('volVal').textContent=this.value"
+             onchange="apiVolume(this.value)">
+      <span class="volume-val" id="volVal">48</span>
+    </div>
+  </div>
+
+  <!-- Music Library -->
+  <div class="card">
+    <div class="card-title">音乐库</div>
+    <div class="file-list" id="fileList">
+      <div class="empty">加载中...</div>
+    </div>
+  </div>
+
+  <!-- Upload -->
+  <div class="card">
+    <div class="card-title">上传音乐</div>
+    <div class="upload-area" id="uploadArea">
+      <input type="file" accept=".mp3,.flac,.wav,.aac,.m4a,.ogg,.wma" multiple
+             onchange="handleUpload(this.files)">
+      <div class="icon">📁</div>
+      <div class="text">点击或拖拽上传音频文件</div>
+    </div>
+  </div>
+
+    <!-- TTS -->
+  <div class="card">
+    <div class="card-title">语音播报</div>
+    <div class="tts-row">
+      <input type="text" id="ttsInput" placeholder="输入要播报的文字..." 
+             onkeydown="if(event.key==='Enter')apiTts()">
+      <button onclick="apiTts()">播报</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let currentFile = null;
+let statusData = {};
+
+// --- Toast ---
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// --- API calls ---
+async function api(path, opts = {}) {
+  try {
+    const r = await fetch(path, opts);
+    return await r.json();
+  } catch (e) {
+    toast('请求失败: ' + e.message);
+    return { ok: false };
+  }
+}
+
+async function loadStatus() {
+  statusData = await api('/api/status');
+  const dot = document.getElementById('statusDot');
+  const txt = document.getElementById('statusText');
+  if (statusData.connected) {
+    dot.className = 'dot on';
+    const mode = statusData.control_mode === 'miservice' ? '云API' : 'DLNA';
+    txt.textContent = `${statusData.device_name} (${mode})`;
+  } else {
+    dot.className = 'dot off';
+    txt.textContent = '未连接';
+  }
+  // Volume
+  if (statusData.player && statusData.player.volume !== undefined) {
+    document.getElementById('volumeSlider').value = statusData.player.volume;
+    document.getElementById('volVal').textContent = statusData.player.volume;
+  }
+  // Playing status
+  if (statusData.player && statusData.player.status === 1) {
+    document.getElementById('npIcon').textContent = '🎶';
+    document.getElementById('npSub').textContent = '正在播放中';
+  }
+}
+
+async function loadFiles() {
+  const files = await api('/api/files');
+  const list = document.getElementById('fileList');
+  if (!files.length) {
+    list.innerHTML = '<div class="empty">暂无音乐文件，请上传</div>';
+    return;
+  }
+  list.innerHTML = files.map(f => {
+    const sizeMB = (f.size / 1024 / 1024).toFixed(1);
+    return `
+      <div class="file-item" data-filename="${encodeURIComponent(f.filename)}" onclick="selectFile(this, '${escHtml(f.filename)}')">
+        <span class="fi-icon">🎵</span>
+        <div class="fi-info">
+          <div class="fi-name">${escHtml(f.name)}</div>
+          <div class="fi-size">${sizeMB} MB</div>
+        </div>
+        <button class="fi-del" onclick="event.stopPropagation();apiDelete('${escHtml(f.filename)}')" title="删除">🗑</button>
+      </div>`;
+  }).join('');
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function selectFile(el, filename) {
+  document.querySelectorAll('.file-item').forEach(e => e.classList.remove('active'));
+  el.classList.add('active');
+  currentFile = filename;
+  document.getElementById('npTitle').textContent = filename;
+  document.getElementById('npSub').textContent = '点击播放按钮开始';
+  // 双击直接播放
+  apiPlay(filename);
+}
+
+async function apiPlay(filename) {
+  toast('播放: ' + filename);
+  document.getElementById('npTitle').textContent = filename;
+  document.getElementById('npSub').textContent = '正在播放';
+  document.getElementById('npIcon').textContent = '🎶';
+  const r = await api('/api/play', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename })
+  });
+  if (!r.ok) toast('播放失败');
+}
+
+async function apiPlayCurrent() {
+  if (currentFile) {
+    apiPlay(currentFile);
+  } else {
+    toast('请先选择一首歌');
+  }
+}
+
+async function apiStop() {
+  const r = await api('/api/stop', { method: 'POST' });
+  if (r.ok) {
+    toast('已停止');
+    document.getElementById('npIcon').textContent = '🎵';
+    document.getElementById('npSub').textContent = '已停止';
+  }
+}
+
+async function apiVolume(vol) {
+  await api('/api/volume', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ volume: parseInt(vol) })
+  });
+}
+
+async function apiTts() {
+  const input = document.getElementById('ttsInput');
+  const text = input.value.trim();
+  if (!text) return;
+  toast('播报: ' + text);
+  await api('/api/tts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text })
+  });
+  input.value = '';
+}
+
+async function apiDelete(filename) {
+  if (!confirm('确定删除 ' + filename + '？')) return;
+  const r = await api('/api/files/' + encodeURIComponent(filename), { method: 'DELETE' });
+  if (r.ok) {
+    toast('已删除');
+    loadFiles();
+  } else {
+    toast('删除失败');
+  }
+}
+
+async function handleUpload(files) {
+  for (const file of files) {
+    const fd = new FormData();
+    fd.append('file', file);
+    toast('上传中: ' + file.name);
+    const r = await api('/api/upload', { method: 'POST', body: fd });
+    if (r.ok) {
+      toast('上传完成: ' + file.name);
+    } else {
+      toast('上传失败: ' + (r.error || ''));
+    }
+  }
+  loadFiles();
+  // Reset input
+  document.querySelector('#uploadArea input').value = '';
+}
+
+// Drag & drop
+const ua = document.getElementById('uploadArea');
+ua.addEventListener('dragover', e => { e.preventDefault(); ua.style.borderColor = 'var(--accent)'; });
+ua.addEventListener('dragleave', () => { ua.style.borderColor = ''; });
+ua.addEventListener('drop', e => {
+  e.preventDefault();
+  ua.style.borderColor = '';
+  handleUpload(e.dataTransfer.files);
+});
+
+// Init
+loadStatus();
+loadFiles();
+// 定时刷新状态
+setInterval(loadStatus, 5000);
+</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+# 小爱音箱 DLNA & AirPlay 配置
+
+# HTTP 音频服务
+http_host: "0.0.0.0"
+http_port: 8080
+
+# AirPlay 接收器
+airplay_name: "小爱音箱-AirPlay"
+airplay_port: 7100
+
+# DLNA 设备发现
+dlna_scan_timeout: 5
+# target_device_name: "小爱音箱"    # 音箱名称（模糊匹配），取消注释并填写
+# target_device_ip: "192.168.1.100" # 音箱 IP（精确匹配），取消注释并填写
+
+# 小米账号（MiService 云 API，也可通过环境变量 MI_USER/MI_PASS/MI_DID 设置）
+# userId 填到 mi_account，passToken 填到 mi_password
+mi_account: ""
+mi_password: ""
+# mi_did: ""           # 设备 DID，不填则使用第一个发现的音箱
+
+# 音频设置
+audio_format: "mp3"
+audio_bitrate: "320k"
+music_dir: "./music"
+
+# 日志
+log_level: "INFO"

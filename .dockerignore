@@ -1,0 +1,15 @@
+__pycache__
+*.pyc
+.git
+.gitignore
+.env
+*.egg-info
+dist
+build
+.venv
+venv
+music/
+conf/
+config.yaml
+*.mi_token.json
+.DS_Store

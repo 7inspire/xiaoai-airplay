@@ -1,0 +1,16 @@
+# NAS 部署专用（Linux host 网络模式）
+# 用法: docker compose -f docker-compose.nas.yml up -d
+services:
+  xiaoai-airplay:
+    image: xiaoai-airplay:latest
+    container_name: xiaoai-airplay
+    restart: unless-stopped
+    network_mode: host          # 必须！mDNS/AirPlay 广播需要 host 网络
+    volumes:
+      - ./music:/app/music
+      - ./conf:/app/conf
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=Asia/Shanghai
