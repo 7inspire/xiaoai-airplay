@@ -102,6 +102,18 @@
   }
   .file-item .fi-del:hover { background: #4a1525; color: var(--accent); }
 
+  /* Card title bar with actions */
+  .card-title-bar { display: flex; align-items: center; justify-content: space-between; }
+  .play-mode-btns { display: flex; gap: 4px; }
+  .play-mode-btns button {
+    width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--border);
+    background: transparent; color: var(--text2); font-size: 15px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: all .15s;
+  }
+  .play-mode-btns button:hover { background: var(--hover); }
+  .play-mode-btns button.active { background: var(--accent2); color: var(--accent); border-color: var(--accent); }
+
   /* Upload */
   .upload-area {
     border: 2px dashed var(--border); border-radius: 10px;
@@ -205,7 +217,13 @@
 
   <!-- Music Library -->
   <div class="card">
-    <div class="card-title">音乐库</div>
+    <div class="card-title-bar">
+      <div class="card-title" style="margin:0">音乐库</div>
+      <div class="play-mode-btns">
+        <button id="modeSeq" onclick="setPlayMode('sequence')" title="顺序播放" class="active">➡</button>
+        <button id="modeShuffle" onclick="setPlayMode('shuffle')" title="随机播放">🔀</button>
+      </div>
+    </div>
     <div class="file-list" id="fileList">
       <div class="empty">加载中...</div>
     </div>
@@ -246,6 +264,7 @@ let playStartTime = 0;
 let currentDuration = 0;
 let lastCmdTime = 0;
 const CMD_GRACE_MS = 5000; // 指令发出后 5s 内不用状态轮询覆盖本地状态
+let playMode = 'sequence'; // 'sequence' | 'shuffle'
 
 // --- Toast ---
 function toast(msg) {
@@ -301,8 +320,22 @@ async function loadStatus() {
     document.getElementById('volumeSlider').value = statusData.player.volume;
     document.getElementById('volVal').textContent = statusData.player.volume;
   }
+  // 播放源状态
+  const src = statusData.play_source;
+  if (src === 'airplay') {
+    // AirPlay 接管时，Web 端停止进度并显示状态
+    if (isPlaying) {
+      isPlaying = false;
+      playStartTime = 0;
+      document.getElementById('playBtn').textContent = '▶';
+      document.getElementById('progFill').style.width = '0%';
+      document.getElementById('progCurrent').textContent = '0:00';
+    }
+    document.getElementById('npSub').textContent = '📱 AirPlay 播放中';
+    document.getElementById('npIcon').textContent = '🎶';
+  }
   // 指令发出后 5s 内不覆盖本地状态（避免 race condition）
-  if (Date.now() - lastCmdTime > CMD_GRACE_MS) {
+  if (src !== 'airplay' && Date.now() - lastCmdTime > CMD_GRACE_MS) {
     const ps = statusData.player && statusData.player.status;
     if (ps === 1) {
       if (!isPlaying) { isPlaying = true; playStartTime = Date.now(); }
@@ -361,12 +394,38 @@ function selectAndPlay(idx) {
 
 function prevTrack() {
   if (!filesList.length) return;
-  selectAndPlay(currentIndex <= 0 ? filesList.length - 1 : currentIndex - 1);
+  if (playMode === 'shuffle') {
+    selectAndPlay(Math.floor(Math.random() * filesList.length));
+  } else {
+    selectAndPlay(currentIndex <= 0 ? filesList.length - 1 : currentIndex - 1);
+  }
 }
 
 function nextTrack() {
   if (!filesList.length) return;
-  selectAndPlay(currentIndex < 0 ? 0 : (currentIndex + 1) % filesList.length);
+  if (playMode === 'shuffle') {
+    selectAndPlay(Math.floor(Math.random() * filesList.length));
+  } else {
+    const next = currentIndex + 1;
+    if (next >= filesList.length) {
+      // 顺序播放完最后一首，自动停止
+      isPlaying = false;
+      playStartTime = 0;
+      document.getElementById('playBtn').textContent = '▶';
+      document.getElementById('npSub').textContent = '全部播放完毕';
+      document.getElementById('progFill').style.width = '100%';
+      toast('全部播放完毕');
+      return;
+    }
+    selectAndPlay(next);
+  }
+}
+
+function setPlayMode(mode) {
+  playMode = mode;
+  document.getElementById('modeSeq').classList.toggle('active', mode === 'sequence');
+  document.getElementById('modeShuffle').classList.toggle('active', mode === 'shuffle');
+  toast(mode === 'sequence' ? '顺序播放' : '随机播放');
 }
 
 // --- Playback ---

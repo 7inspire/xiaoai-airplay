@@ -56,6 +56,7 @@ class XiaoaiAirPlayService:
         self._running = False
         self._airplay_active = False  # AirPlay 当前是否在播放
         self._last_play_url: str = ""   # 最近播放的 URL，用于 resume 工作不常时重播
+        self._play_source: str = ""     # 当前播放源: "web" | "airplay" | ""
 
     @property
     def has_player(self) -> bool:
@@ -169,6 +170,7 @@ class XiaoaiAirPlayService:
 
     async def _stop_play(self) -> bool:
         """停止播放"""
+        self._play_source = ""
         if self.dlna.connected:
             return await self.dlna.stop()
         elif self.miservice.connected:
@@ -177,6 +179,11 @@ class XiaoaiAirPlayService:
 
     async def play_file(self, filename: str):
         """播放指定音频文件"""
+        # Web 播放时停止 AirPlay 流
+        if self._airplay_active:
+            logger.info("Web 播放，停止 AirPlay 流")
+            self._airplay_active = False
+        self._play_source = "web"
         url = self.audio_server.get_file_url(filename, self.local_ip)
         logger.info("播放文件: %s -> %s", filename, url)
         return await self._play_url(url, title=filename)
@@ -213,12 +220,20 @@ class XiaoaiAirPlayService:
 
     async def _on_airplay_audio(self, data: bytes):
         """接收到 AirPlay 音频数据"""
+        # 检测 AirPlay 恢复：如暂停后被 Web 播放接管，再恢复 AirPlay 时重新推流
+        if not self._airplay_active:
+            logger.info("检测到 AirPlay 恢复，重新推送流到音箱")
+            await self._on_airplay_play()
         await self.audio_server.push_stream_data(data)
 
     async def _on_airplay_play(self):
         """AirPlay 开始播放"""
         logger.info("AirPlay 播放开始，推送流到音箱...")
+        # AirPlay 播放时替换 Web 播放
+        if self._play_source == "web":
+            logger.info("AirPlay 接管，停止 Web 播放")
         self._airplay_active = True
+        self._play_source = "airplay"
         if self.has_player:
             stream_url = self.audio_server.get_stream_url(self.local_ip)
             await self._play_url(stream_url, title="AirPlay Stream")
@@ -227,7 +242,9 @@ class XiaoaiAirPlayService:
         """AirPlay 停止播放"""
         logger.info("AirPlay 播放停止")
         self._airplay_active = False
-        await self._stop_play()
+        if self._play_source == "airplay":
+            self._play_source = ""
+            await self._stop_play()
 
     async def _on_stream_disconnected(self):
         """流客户端全部断开（如语音唤醒导致音箱中断拉流）"""

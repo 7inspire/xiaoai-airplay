@@ -65,6 +65,7 @@ class WebController:
             "local_ip": svc.local_ip,
             "http_port": svc.config.http_port,
             "airplay_name": svc.config.airplay_name,
+            "play_source": svc._play_source,  # "web" | "airplay" | ""
         }
         if svc.dlna.connected and svc._target_device:
             status["device_name"] = svc._target_device.name
