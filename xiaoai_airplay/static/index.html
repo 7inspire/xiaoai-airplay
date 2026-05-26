@@ -53,19 +53,28 @@
   .now-playing .info .title { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .now-playing .info .sub { font-size: 12px; color: var(--text2); margin-top: 2px; }
 
-  /* Controls */
+  /* Controls — iOS style */
   .controls {
-    display: flex; align-items: center; justify-content: center; gap: 16px;
-    padding: 8px 0;
+    display: flex; align-items: center; justify-content: center; gap: 24px;
+    padding: 12px 0 8px;
   }
   .ctrl-btn {
-    width: 48px; height: 48px; border-radius: 50%; border: none;
-    background: var(--accent2); color: var(--text); font-size: 20px;
+    width: 44px; height: 44px; border-radius: 50%; border: none;
+    background: transparent; color: var(--text); font-size: 0;
     cursor: pointer; display: flex; align-items: center; justify-content: center;
-    transition: all .15s;
+    transition: opacity .15s;
+    padding: 0;
   }
-  .ctrl-btn:hover { background: var(--accent); transform: scale(1.1); }
-  .ctrl-btn.play { width: 56px; height: 56px; background: var(--accent); font-size: 24px; }
+  .ctrl-btn:hover { opacity: 0.7; }
+  .ctrl-btn:active { opacity: 0.5; transform: scale(0.92); }
+  .ctrl-btn svg { width: 28px; height: 28px; fill: var(--text); }
+  .ctrl-btn.play {
+    width: 60px; height: 60px;
+    background: var(--text); border-radius: 50%;
+  }
+  .ctrl-btn.play svg { width: 30px; height: 30px; fill: var(--bg); }
+  .ctrl-btn.play:hover { opacity: 0.85; }
+  .ctrl-btn.sm svg { width: 22px; height: 22px; }
 
   /* Volume */
   .volume-row {
@@ -201,10 +210,18 @@
       <span class="prog-time" id="progTotal">--:--</span>
     </div>
     <div class="controls">
-      <button class="ctrl-btn" onclick="prevTrack()" title="上一曲">⏮</button>
-      <button class="ctrl-btn" onclick="apiStop()" title="停止">⏹</button>
-      <button class="ctrl-btn play" onclick="togglePlayPause()" title="播放/暂停" id="playBtn">▶</button>
-      <button class="ctrl-btn" onclick="nextTrack()" title="下一曲">⏭</button>
+      <button class="ctrl-btn" onclick="prevTrack()" title="上一曲">
+        <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
+      </button>
+      <button class="ctrl-btn sm" onclick="apiStop()" title="停止">
+        <svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
+      </button>
+      <button class="ctrl-btn play" onclick="togglePlayPause()" title="播放/暂停" id="playBtn">
+        <svg id="iconPlay" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+      </button>
+      <button class="ctrl-btn" onclick="nextTrack()" title="下一曲">
+        <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6z"/></svg>
+      </button>
     </div>
     <div class="volume-row">
       <span>🔉</span>
@@ -265,6 +282,7 @@ let currentDuration = 0;
 let lastCmdTime = 0;
 const CMD_GRACE_MS = 5000; // 指令发出后 5s 内不用状态轮询覆盖本地状态
 let playMode = 'sequence'; // 'sequence' | 'shuffle'
+let webPaused = false; // Web 播放被暂停（实际是 stop，用于判断 resume）
 
 // --- Toast ---
 function toast(msg) {
@@ -327,7 +345,7 @@ async function loadStatus() {
     if (isPlaying) {
       isPlaying = false;
       playStartTime = 0;
-      document.getElementById('playBtn').textContent = '▶';
+      setPlayIcon(false);
       document.getElementById('progFill').style.width = '0%';
       document.getElementById('progCurrent').textContent = '0:00';
     }
@@ -339,15 +357,15 @@ async function loadStatus() {
     const ps = statusData.player && statusData.player.status;
     if (ps === 1) {
       if (!isPlaying) { isPlaying = true; playStartTime = Date.now(); }
-      document.getElementById('playBtn').textContent = '⏸';
+      setPlayIcon(true);
       document.getElementById('npIcon').textContent = '🎶';
     } else if (ps === 2) {
       isPlaying = false;
-      document.getElementById('playBtn').textContent = '▶';
+      setPlayIcon(false);
       document.getElementById('npSub').textContent = '已暂停';
     } else if (ps === 0) {
       if (isPlaying) { isPlaying = false; playStartTime = 0; }
-      document.getElementById('playBtn').textContent = '▶';
+      setPlayIcon(false);
     }
   }
 }
@@ -410,8 +428,9 @@ function nextTrack() {
     if (next >= filesList.length) {
       // 顺序播放完最后一首，自动停止
       isPlaying = false;
+      webPaused = false;
       playStartTime = 0;
-      document.getElementById('playBtn').textContent = '▶';
+      setPlayIcon(false);
       document.getElementById('npSub').textContent = '全部播放完毕';
       document.getElementById('progFill').style.width = '100%';
       toast('全部播放完毕');
@@ -444,17 +463,26 @@ async function apiPlay(filename) {
     toast('播放失败');
   } else {
     isPlaying = true;
+    webPaused = false;
     playStartTime = Date.now();
-    document.getElementById('playBtn').textContent = '⏸';
+    setPlayIcon(true);
     document.getElementById('progFill').style.width = '0%';
     document.getElementById('progCurrent').textContent = '0:00';
   }
 }
 
+function setPlayIcon(playing) {
+  const svg = document.getElementById('iconPlay');
+  svg.innerHTML = playing
+    ? '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>'
+    : '<path d="M8 5v14l11-7z"/>';
+}
+
 async function togglePlayPause() {
   if (isPlaying) {
     await apiPause();
-  } else if (statusData.player && statusData.player.status === 2) {
+  } else if (webPaused && currentIndex >= 0) {
+    // 暂停后恢复
     await apiResume();
   } else if (currentIndex >= 0) {
     selectAndPlay(currentIndex);
@@ -470,8 +498,9 @@ async function apiPause() {
   const r = await api('/api/pause', { method: 'POST' });
   if (r.ok) {
     isPlaying = false;
-    toast('⏸ 已暂停');
-    document.getElementById('playBtn').textContent = '▶';
+    webPaused = true;
+    toast('已暂停');
+    setPlayIcon(false);
     document.getElementById('npSub').textContent = '已暂停';
   } else {
     toast('暂停失败: ' + (r.error || '音箱不支持'));
@@ -484,9 +513,10 @@ async function apiResume() {
   const r = await api('/api/resume', { method: 'POST' });
   if (r.ok) {
     isPlaying = true;
+    webPaused = false;
     playStartTime = Date.now();
-    toast('▶ 继续播放');
-    document.getElementById('playBtn').textContent = '⏸';
+    toast('继续播放');
+    setPlayIcon(true);
     document.getElementById('npSub').textContent = '正在播放中';
     document.getElementById('npIcon').textContent = '🎶';
   } else {
@@ -500,9 +530,10 @@ async function apiStop() {
   const r = await api('/api/stop', { method: 'POST' });
   if (r.ok) {
     isPlaying = false;
+    webPaused = false;
     playStartTime = 0;
-    toast('⏹ 已停止');
-    document.getElementById('playBtn').textContent = '▶';
+    toast('已停止');
+    setPlayIcon(false);
     document.getElementById('npIcon').textContent = '🎵';
     document.getElementById('npSub').textContent = '已停止';
     document.getElementById('progFill').style.width = '0%';

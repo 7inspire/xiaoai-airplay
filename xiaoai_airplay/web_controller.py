@@ -117,26 +117,30 @@ class WebController:
         return web.json_response({"ok": result, "action": "stop"})
 
     async def _handle_api_pause(self, request: web.Request) -> web.Response:
-        """暂停播放"""
-        if self.service.miservice.connected:
-            result = await self.service.miservice.pause()
+        """暂停播放（URL 播放实际用 stop，保留 play_source 以便 resume）"""
+        svc = self.service
+        saved_source = svc._play_source  # 保留播放源
+        if svc.miservice.connected:
+            result = await svc.miservice.stop()
+            svc._play_source = saved_source  # 恢复，让 resume 知道源
             return web.json_response({"ok": result, "action": "pause"})
-        elif self.service.dlna.connected:
-            result = await self.service.dlna.pause()
+        elif svc.dlna.connected:
+            result = await svc.dlna.pause()
+            svc._play_source = saved_source
             return web.json_response({"ok": result, "action": "pause"})
         return web.json_response({"ok": False, "error": "未连接"}, status=503)
 
     async def _handle_api_resume(self, request: web.Request) -> web.Response:
-        """继续播放（如果 player_play 不支持，回退到重播最近的 URL）"""
-        if self.service.miservice.connected:
-            result = await self.service.miservice.resume()
-            if not result and self.service._last_play_url:
-                # 流播放场景下 player_play 可能不支持，重下 play_url
-                logger.info("resume 失败，重播上次 URL: %s", self.service._last_play_url)
-                result = await self.service._play_url(self.service._last_play_url, title="Resume")
+        """继续播放（URL 播放始终重新下发 play_url）"""
+        svc = self.service
+        if svc.miservice.connected:
+            if svc._last_play_url:
+                result = await svc._play_url(svc._last_play_url, title="Resume")
+            else:
+                result = await svc.miservice.resume()
             return web.json_response({"ok": result, "action": "resume"})
-        elif self.service.dlna.connected:
-            result = await self.service.dlna.play()
+        elif svc.dlna.connected:
+            result = await svc.dlna.play()
             return web.json_response({"ok": result, "action": "resume"})
         return web.json_response({"ok": False, "error": "未连接"}, status=503)
 
